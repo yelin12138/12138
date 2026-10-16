@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "motorlab-workbench"
+version = "0.2.0"
+description = "Induction motor FOC and resistance identification teaching workbench"
+requires-python = ">=3.10"
+dependencies = ["numpy>=2.0,<3", "matplotlib>=3.9,<4"]
+
+[project.scripts]
+motorlab = "motorlab.app:main"
+
+[tool.setuptools.packages.find]
+include = ["motorlab*"]
+
+[tool.setuptools.package-data]
+motorlab = ["web/*.html", "web/*.css", "web/*.js"]

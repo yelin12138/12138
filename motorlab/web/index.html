@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#11233d">
+  <title>MotorLab · 异步电机在线辨识实验台</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="MotorLab 首页"><span class="brand-mark">M<span>∿</span></span><span>MotorLab<small>异步电机 · 在线参数辨识</small></span></a>
+    <div class="project"><span class="project-dot"></span><span>FOC / 转子电阻观测实验<span class="project-sub">可采样信号驱动 · 层级物理模型</span></span></div>
+    <div class="top-status"><span class="status-led" id="statusLed"></span><span id="statusText" role="status">正在连接实验引擎</span><span class="local-tag">LOCAL / PYTHON</span></div>
+  </header>
+
+  <div id="errorBanner" class="error-banner" role="alert" hidden><strong>实验提示</strong><span id="errorText"></span><button id="dismissError" aria-label="关闭提示">×</button></div>
+
+  <section class="transport" aria-label="仿真控制">
+    <div class="transport-buttons"><button id="runButton" class="button primary" disabled><span aria-hidden="true">▶</span> 运行</button><button id="stepButton" class="button" disabled title="推进一个采样周期">单步</button><button id="batchButton" class="button" disabled title="推进 100 个采样周期">+100 步</button><button id="resetButton" class="button icon-button" disabled title="按当前参数重新初始化" aria-label="重置实验">↺</button></div>
+    <div class="clock"><span class="eyebrow">仿真时间</span><strong id="simTime">0.0000 <small>s</small></strong><span id="sampleNumber">第 0 次采样</span></div>
+    <div class="timing"><span>采样 Ts <strong id="tsValue">—</strong></span><span>积分 Δt <strong id="dtValue">—</strong></span><span>总时长 <strong id="durationValue">—</strong></span></div>
+    <label class="speed-control">播放目标 <select id="playSpeed" aria-label="播放目标速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select><small id="performance">按仿真采样步进</small></label>
+    <a href="/api/export" class="button export-button" download="motorlab.csv" title="导出本次实验全部采样数据">↓ 导出 CSV</a>
+  </section>
+
+  <main class="workspace">
+    <aside class="left-panel panel">
+      <div class="panel-heading"><span class="eyebrow">EXPERIMENT</span><h2>模型与实验</h2></div>
+      <div class="sidebar-tabs" role="tablist"><button id="modelTab" class="active" role="tab" aria-selected="true" aria-controls="modelPanel">模型导航</button><button id="settingsTab" role="tab" aria-selected="false" aria-controls="settingsPanel">实验参数</button></div>
+      <div id="modelPanel" role="tabpanel" aria-labelledby="modelTab">
+        <nav id="modelTree" class="model-tree" aria-label="层级模型导航"></nav>
+        <div class="signal-heading"><h3>信号探针</h3><span id="probeCount" class="tiny-tag">0 已选</span></div>
+        <label class="search-label"><span aria-hidden="true">⌕</span><input id="signalSearch" type="search" placeholder="搜索电流、电阻、转速…" aria-label="搜索可监测信号"></label>
+        <div id="signalList" class="signal-list"></div>
+        <p class="sidebar-note">勾选信号加入示波器。点击连线，可将该信号接入探针。</p>
+      </div>
+      <div id="settingsPanel" role="tabpanel" aria-labelledby="settingsTab" hidden>
+        <p class="settings-intro">修改后应用并重置实验。采样与物理积分采用独立时间步长。</p>
+        <form id="settingsForm"><div id="configFields"></div><button type="submit" class="button primary apply-button">应用参数并重置</button></form>
+        <p class="sidebar-note">“真实值参考”模式直接使用真实电阻，仅供评价上限。独立辨识器始终遵守采样信号边界。</p>
+      </div>
+    </aside>
+
+    <section class="center-panel">
+      <section class="model-area panel" aria-label="物理信号模型">
+        <div class="canvas-toolbar"><nav id="breadcrumbs" aria-label="模块路径"></nav><div class="canvas-actions"><button id="zoomOut" title="缩小" aria-label="缩小模型">−</button><span id="zoomValue">100%</span><button id="zoomIn" title="放大" aria-label="放大模型">+</button><button id="fitDiagram" title="显示完整模型">适应</button></div></div>
+        <div class="model-title"><div><span class="eyebrow">SIGNAL FLOW MODEL</span><h1 id="diagramTitle">加载物理模型…</h1><p id="diagramDescription">连接 Python 仿真引擎后显示实际信号。</p></div><span class="view-tag" id="viewMode">● 最新采样</span></div>
+        <div class="diagram-wrap" id="diagramWrap"><svg id="diagram" xmlns="http://www.w3.org/2000/svg" role="group" aria-label="可点击的信号模块图"></svg><div class="canvas-hint">点击模块展开数学结构 · 点击连线监测信号 · 拖动空白平移</div></div>
+        <div class="model-footer"><span><i class="legend-line"></i> 采样 / 控制信号</span><span><i class="legend-line truth-line"></i> 评价用真值</span><span id="sourceLabel">数学模型 ↔ 代码</span></div>
+      </section>
+
+      <section class="scope-area panel" aria-label="实时示波器">
+        <div class="scope-toolbar"><div><span class="scope-icon">∿</span><h2>信号示波器</h2><span class="tiny-tag" id="scopeStatus">等待采样</span></div><div class="scope-tools"><label>时间窗 <select id="scopeWindow"><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="all" selected>全部</option></select></label><button id="latestButton" class="small-button">跟随最新</button></div></div>
+        <div id="traceChips" class="trace-chips"></div>
+        <div id="scopeWrap" class="scope-wrap"><canvas id="scopeCanvas" aria-label="采样信号曲线，点击查看历史时刻" tabindex="0"></canvas><div id="scopeEmpty" class="scope-empty"><span>∿</span><strong>信号将在运行后出现</strong><p>先运行或单步，再点击曲线查看任意采样时刻。</p></div></div>
+        <div class="timeline"><span id="cursorTime">探针 t = 0.0000 s</span><input id="timeCursor" type="range" min="0" max="0" value="0" step="1" aria-label="历史采样时间游标" disabled><span id="historyCount">0 个采样</span></div>
+      </section>
+    </section>
+
+    <aside class="right-panel panel">
+      <div class="panel-heading"><span class="eyebrow">INSPECTOR</span><h2>模块与信号</h2></div>
+      <div class="inspector-content"><div class="inspector-section"><span class="section-label">当前探针</span><h3 id="probeTitle">请选择信号</h3><div class="probe-value"><strong id="probeValue">—</strong><span id="probeUnit"></span></div><div class="probe-details"><span id="probeCategory">点击模块或连线</span><span id="probeTimestamp">t = 0.0000 s</span></div><p id="probeDescription" class="explanation"></p></div>
+        <div class="inspector-section"><span class="section-label">物理 / 数学模型</span><h3 id="inspectorTitle">系统模型</h3><p id="inspectorDescription" class="explanation"></p><pre id="formula" class="formula-box"></pre><div id="moduleValues" class="module-values"></div><div class="source-reference"><span>实现位置</span><code id="inspectorSource">—</code></div></div>
+        <div class="inspector-section metrics-section"><span class="section-label">独立评价器 · 最新运行结果</span><div id="metrics" class="metric-list"><p class="explanation">运行后显示估计误差和控制指标。</p></div></div>
+        <div class="boundary-note"><span>◈</span><p><strong>观测边界</strong>辨识器使用采样电压、电流和转速。电阻真值与内部磁链仅用于独立评价或明确标记的参考控制。</p></div>
+      </div>
+    </aside>
+  </main>
+  <footer class="app-footer"><span><i></i> 本地 Python 数值仿真</span><span>显示刷新与采样频率独立 · 播放速度受计算性能影响 · 不保证硬实时</span><span id="connectionStatus">连接中</span></footer>
+  <script src="/app.js" defer></script>
+</body>
+</html>
