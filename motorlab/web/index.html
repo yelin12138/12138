@@ -10,7 +10,7 @@
 <body>
   <header class="topbar">
     <a class="brand" href="/" aria-label="MotorLab 首页"><span class="brand-mark">M<span>∿</span></span><span>MotorLab<small>异步电机 · 在线参数辨识</small></span></a>
-    <div class="project"><span class="project-dot"></span><span>FOC / 转子电阻观测实验<span class="project-sub">可采样信号驱动 · 层级物理模型</span></span></div>
+    <div class="project"><span class="project-dot"></span><span>FOC / SVPWM / 三维电机实验<span class="project-sub">开关事件求解 · 可采样信号辨识</span></span></div>
     <div class="top-status"><span class="status-led" id="statusLed"></span><span id="statusText" role="status">正在连接实验引擎</span><span class="local-tag">LOCAL / PYTHON</span></div>
   </header>
 
@@ -23,6 +23,15 @@
     <label class="speed-control">播放目标 <select id="playSpeed" aria-label="播放目标速度"><option value="0.25">0.25×</option><option value="0.5">0.5×</option><option value="1" selected>1×</option><option value="2">2×</option><option value="5">5×</option></select><small id="performance">按仿真采样步进</small></label>
     <a href="/api/export" class="button export-button" download="motorlab.csv" title="导出本次实验全部采样数据">↓ 导出 CSV</a>
   </section>
+
+  <form id="timingForm" class="quick-settings" aria-label="顶部时序设置">
+    <label>逆变器<select id="quickInverter"><option value="svpwm">SVPWM 六开关</option><option value="average">平均电压（对照）</option></select></label>
+    <label>总时长 / s<input id="quickDuration" type="number" min="0.01" max="30" step="any" required></label>
+    <label>控制采样 Ts / μs<input id="quickSample" type="number" min="50" max="2000" step="any" required></label>
+    <label>PWM 频率 / kHz<input id="quickPwm" type="number" min="1" max="20" step="any" required></label>
+    <label>积分步长上限 / μs<input id="quickIntegration" type="number" min="0.5" max="1000" step="any" required></label>
+    <button class="button" type="submit">应用时序并重置</button><span id="timingRelation">同步 PWM：Ts = N × TPWM</span>
+  </form>
 
   <main class="workspace">
     <aside class="left-panel panel">
@@ -50,6 +59,13 @@
         <div class="model-footer"><span><i class="legend-line"></i> 采样 / 控制信号</span><span><i class="legend-line truth-line"></i> 评价用真值</span><span id="sourceLabel">数学模型 ↔ 代码</span></div>
       </section>
 
+      <section class="pwm-area panel" aria-label="SVPWM 开关级示波器">
+        <div class="scope-toolbar"><div><span class="scope-icon">▥</span><h2>SVPWM 开关显微镜</h2></div><div class="scope-tools"><label>窗口<select id="pwmWindow"><option value="0.0005">0.5 ms</option><option value="0.001">1 ms</option><option value="0.002" selected>2 ms</option><option value="0.005">5 ms</option><option value="0.01">10 ms</option><option value="0.02">20 ms</option><option value="0.05">50 ms（调制包络）</option></select></label><a href="/api/export-pwm" class="small-button" download>导出开关 CSV</a></div></div>
+        <div class="pwm-summary"><span id="pwmStatus">等待开关事件</span><span><i class="phase-a">A</i> <i class="phase-b">B</i> <i class="phase-c">C</i></span></div>
+        <div class="pwm-canvas-wrap"><canvas id="pwmCanvas" aria-label="载波、六路门极、三相电压和电流纹波"></canvas></div>
+        <div class="pwm-caption" id="pwmProbe">窗口跟随当前采样或历史游标；鼠标悬停读取开关时刻。边沿不抽稀。</div>
+      </section>
+
       <section class="scope-area panel" aria-label="实时示波器">
         <div class="scope-toolbar"><div><span class="scope-icon">∿</span><h2>信号示波器</h2><span class="tiny-tag" id="scopeStatus">等待采样</span></div><div class="scope-tools"><label>时间窗 <select id="scopeWindow"><option value="0.2">0.2 s</option><option value="0.5">0.5 s</option><option value="1">1 s</option><option value="2">2 s</option><option value="all" selected>全部</option></select></label><button id="latestButton" class="small-button">跟随最新</button></div></div>
         <div id="traceChips" class="trace-chips"></div>
@@ -60,6 +76,12 @@
 
     <aside class="right-panel panel">
       <div class="panel-heading"><span class="eyebrow">INSPECTOR</span><h2>模块与信号</h2></div>
+      <section class="motor-scene" aria-label="三维异步电机">
+        <div class="scene-heading"><h3>3D 异步电机</h3><div><button id="motorParameterButton" class="small-button">参数</button> <button id="expandMotor" class="small-button">放大 ↗</button></div></div>
+        <div id="motorHost" class="motor-stage"><canvas id="motorCanvas" tabindex="0" aria-label="可旋转缩放的三维异步电机，转子角度来自仿真"></canvas><span class="scene-tag">定子 · 绕组 · 鼠笼转子</span></div>
+        <div class="scene-controls"><label><input id="motorCutaway" type="checkbox" checked>剖开外壳</label><label><input id="motorField" type="checkbox" checked>磁链方向</label></div>
+        <p id="motorStatus" class="scene-status">正在初始化三维视图</p><p class="scene-note">拖动旋转，滚轮缩放。由真实机械角度驱动，随历史游标回看；动画做显示插值。几何为结构示意，不是有限元场解。</p>
+      </section>
       <div class="inspector-content"><div class="inspector-section"><span class="section-label">当前探针</span><h3 id="probeTitle">请选择信号</h3><div class="probe-value"><strong id="probeValue">—</strong><span id="probeUnit"></span></div><div class="probe-details"><span id="probeCategory">点击模块或连线</span><span id="probeTimestamp">t = 0.0000 s</span></div><p id="probeDescription" class="explanation"></p></div>
         <div class="inspector-section"><span class="section-label">物理 / 数学模型</span><h3 id="inspectorTitle">系统模型</h3><p id="inspectorDescription" class="explanation"></p><pre id="formula" class="formula-box"></pre><div id="moduleValues" class="module-values"></div><div class="source-reference"><span>实现位置</span><code id="inspectorSource">—</code></div></div>
         <div class="inspector-section metrics-section"><span class="section-label">独立评价器 · 最新运行结果</span><div id="metrics" class="metric-list"><p class="explanation">运行后显示估计误差和控制指标。</p></div></div>
@@ -67,7 +89,10 @@
       </div>
     </aside>
   </main>
+  <dialog id="motorDialog" class="motor-dialog"><div class="scene-heading"><h2>异步电机 · 动态结构视图</h2><button id="closeMotor" class="button">关闭</button></div><div id="largeMotorHost" class="motor-stage large-motor-stage"></div><p class="scene-note">拖动旋转 / 滚轮缩放 / 方向键调整视角 / Home 复位。高转速可能出现显示频闪，可降低播放倍率。青色箭头为真实转子磁链方向（评价通道）。</p></dialog>
   <footer class="app-footer"><span><i></i> 本地 Python 数值仿真</span><span>显示刷新与采样频率独立 · 播放速度受计算性能影响 · 不保证硬实时</span><span id="connectionStatus">连接中</span></footer>
+  <script src="/motor3d.js" defer></script>
+  <script src="/pwm-scope.js" defer></script>
   <script src="/app.js" defer></script>
 </body>
 </html>

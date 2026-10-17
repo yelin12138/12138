@@ -42,17 +42,31 @@ class Motor:
     def __init__(self, p):
         self.p = p
         self.state = np.zeros(5)
+        self.rotor_angle = 0.
 
     def step(self, voltage, load, rr, dt):
+        # 高频事件段使用标量 RK4，避免每个桥臂边沿创建大量临时 NumPy 数组。
+        # 与 electrical()/torque() 相同方程，后者保留为独立的可核对表达。
+        p = self.p
+        rs, lm, lr = p.rs, p.lm, p.lr
+        leakage = p.ls-lm*lm/lr
+        coupling, a, poles = lm/lr, rr/lr, p.poles
+        u0, u1 = map(float, voltage)
+        moment = 1.5*poles*coupling
         def rhs(x):
-            mechanical = (torque(x, self.p) - load - self.p.friction*x[4])/self.p.inertia
-            return np.r_[electrical(x[:4], voltage, x[4], rr, self.p), mechanical]
-        x = self.state
+            i0, i1, f0, f1, speed = x
+            df0 = a*(lm*i0-f0)-poles*speed*f1
+            df1 = a*(lm*i1-f1)+poles*speed*f0
+            return ((u0-rs*i0-coupling*df0)/leakage,
+                    (u1-rs*i1-coupling*df1)/leakage, df0, df1,
+                    (moment*(f0*i1-f1*i0)-load-p.friction*speed)/p.inertia)
+        x = tuple(map(float, self.state))
         k1 = rhs(x)
-        k2 = rhs(x + dt*k1/2)
-        k3 = rhs(x + dt*k2/2)
-        k4 = rhs(x + dt*k3)
-        self.state = x + dt*(k1 + 2*k2 + 2*k3 + k4)/6
+        k2 = rhs(tuple(x[j]+dt*k1[j]/2 for j in range(5)))
+        k3 = rhs(tuple(x[j]+dt*k2[j]/2 for j in range(5)))
+        k4 = rhs(tuple(x[j]+dt*k3[j] for j in range(5)))
+        self.rotor_angle += dt*(x[4]+dt*(k1[4]+k2[4]+k3[4])/6)
+        self.state = np.array([x[j]+dt*(k1[j]+2*k2[j]+2*k3[j]+k4[j])/6 for j in range(5)])
 
 
 class Sensors:

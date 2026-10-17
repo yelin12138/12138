@@ -1,4 +1,4 @@
-"""间接转子磁场定向控制：速度 PI + d/q 电流 PI，理想平均电压逆变器。"""
+"""间接转子磁场定向控制：速度 PI + d/q 电流 PI，输出待调制电压指令。"""
 import math
 import numpy as np
 
@@ -71,7 +71,8 @@ class FOCController:
         applied = requested*factor
         self.d_pi.integrate(id_error, applied[0]-vd_ff, vd_pi, dt)
         self.q_pi.integrate(iq_error, applied[1]-vq_ff, vq_pi, dt)
-        # 输出电压在整个采样区间零阶保持；用区间中点角度逆变换。
+        # αβ 电压指令在采样区间保持；实际开关电压由 SVPWM 生成。
+        # 使用区间中点角度逆变换；平均逆变器对照模式才直接施加该指令。
         voltage_theta = self.theta+omega_e*dt/2
         voltage = inverse_park(applied, voltage_theta)
         self.theta = (self.theta+omega_e*dt+math.pi)%(2*math.pi)-math.pi

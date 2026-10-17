@@ -447,3 +447,101 @@ DIAGRAMS["id_pi"] = _pi(
 DIAGRAMS["iq_pi"] = _pi(
     "q", "q 轴电流 PI：实现转矩电流给定", "iq_ref", "iq", "iq_error",
     "iq_p", "iq_i", "vq_pi", "vq")
+
+# 开关级扩展：控制采样快照是边界处读数；载波/门极内部波形由独立高频记录提供。
+for _category, _items in {
+    'timing': [('pwm_period','PWM 周期','s'),('pwm_frequency','PWM 频率','Hz'),
+               ('integration_count','累计物理积分子步','次'),('switching_rows','累计高频记录点','次'),
+               ('inverter_switching','开关模型启用标志','0/1')],
+    'control': [('u_alpha_command','SVPWM α 电压指令','V'),('u_beta_command','SVPWM β 电压指令','V'),
+                ('duty_a','A 相占空比',''),('duty_b','B 相占空比',''),('duty_c','C 相占空比',''),
+                ('modulation_a','A 相归一化调制波',''),('modulation_b','B 相归一化调制波',''),
+                ('modulation_c','C 相归一化调制波',''),('zero_sequence','零序注入电压','V'),
+                ('pwm_sector','空间矢量扇区',''),('pwm_t1','相邻有效矢量作用时间 T1','s'),
+                ('pwm_t2','相邻有效矢量作用时间 T2','s'),('pwm_t0','零矢量总作用时间 T0','s'),
+                ('carrier','控制边界处三角载波',''),('gate_au','A 相上桥臂（边界左值）','0/1'),
+                ('gate_al','A 相下桥臂（边界左值）','0/1'),('gate_bu','B 相上桥臂（边界左值）','0/1'),
+                ('gate_bl','B 相下桥臂（边界左值）','0/1'),('gate_cu','C 相上桥臂（边界左值）','0/1'),
+                ('gate_cl','C 相下桥臂（边界左值）','0/1'),('u_alpha_switch','瞬时开关电压 α（边界左值）','V'),
+                ('u_beta_switch','瞬时开关电压 β（边界左值）','V'),
+                ('phase_voltage_a','瞬时 A 相端电压（边界左值）','V'),
+                ('phase_voltage_b','瞬时 B 相端电压（边界左值）','V'),
+                ('phase_voltage_c','瞬时 C 相端电压（边界左值）','V')],
+    'measurement': [('i_a','采样 A 相电流（αβ 重构）','A'),('i_b','采样 B 相电流（αβ 重构）','A'),
+                    ('i_c','采样 C 相电流（αβ 重构）','A')],
+    'truth': [('peak_instant_current_a','高频电流矢量峰值（仅评价）','A'),
+              ('rotor_angle','真实转子机械角度（仅评价/3D）','rad'),
+              ('rotor_turns','真实转子累计转数（仅评价/3D）','转')],
+}.items():
+    for _key, _label, _unit in _items:
+        SIGNALS[_key] = _s(_label, _unit, _category)
+SIGNALS['u_alpha']['label'] = '区间平均端电压 α'
+SIGNALS['u_beta']['label'] = '区间平均端电压 β'
+SIGNALS['u_alpha_measured']['label'] = '测量区间平均电压 α'
+SIGNALS['u_beta_measured']['label'] = '测量区间平均电压 β'
+SIGNALS['integration_step']['label'] = '当前积分步长上限（事件段可更短）'
+for _key in ['gate_au','gate_al','gate_bu','gate_bl','gate_cu','gate_cl','carrier',
+             'phase_voltage_a','phase_voltage_b','phase_voltage_c','u_alpha_switch','u_beta_switch']:
+    SIGNALS[_key]['description'] = '这里只显示控制区间末端读数，可能总是零矢量。请在 SVPWM 开关显微镜观察周期内边沿，控制采样率不足以恢复 PWM 波形。'
+
+DIAGRAMS['inverter'] = D(
+    'SVPWM 与六开关三相逆变器',
+    '默认模式将真实门极状态转换成三相脉冲电压并驱动电机。精确分割开关边沿，积分上限控制段内求解。平均电压模式保留为对照；下方显微镜显示完整高频波形。',
+    'udq → 逆 Park → uαβ* → SVPWM 占空比\n上桥臂 Sj = 1[dj ≥ c(t)]；下桥臂 = 1−Sj\nun = Vdc[Sa,Sb,Sc] − Vdc(Sa+Sb+Sc)/3\n电机实际使用分段开关电压；采样电压为区间端电压的测量平均\n没有死区、器件压降、母线纹波或寄生参数。',
+    'motorlab/inverter.py · SVPWM, bridge_voltage(); simulation.py · _drive()',
+    [N('reference','αβ 电压指令','source',20,100,'u_alpha_command'),
+     N('svpwm','空间矢量调制','model',260,100,'pwm_sector','svpwm',w=185),
+     N('bridge','六开关三相桥','model',540,100,child='bridge',w=185),
+     N('motor','脉冲电压 → 电机','model',820,100,child='motor',w=210),
+     N('clock','控制 Ts / PWM 周期','model',260,330,'pwm_period','timing',w=185),
+     N('monitor','高频事件记录','model',540,330,'switching_rows',w=185),
+     N('sample','区间平均电压采样','model',820,330,'u_alpha_measured','sensors',w=210)],
+    [E('reference','svpwm','uα*','u_alpha_command'),E('clock','svpwm','TPWM'),
+     E('svpwm','bridge','六路门极'),E('bridge','motor','瞬时脉冲电压'),
+     E('bridge','monitor','完整开关边沿'),E('bridge','sample','端电压积分/Ts')],height=470)
+DIAGRAMS['svpwm'] = D(
+    'SVPWM：零序注入、载波比较与七段序列',
+    '中心对齐载波比较采用 min/max 零序注入，在此线性调制范围内等价于对称七段 SVPWM。显示 T1/T2/T0 便于与扇区法对照；实际门极时刻由占空比精确生成。',
+    'ua*=uα*；ub*=−uα*/2+√3uβ*/2；uc*=−uα*/2−√3uβ*/2\nu0=−(max(ua*,ub*,uc*)+min(ua*,ub*,uc*))/2\ndj=1/2+(uj*+u0)/Vdc\nc(t)=|2 frac(t/TPWM)−1|；Sj=1[dj≥c(t)]\n扇区 q=1+floor(arg(uα*+j uβ*)/(π/3))\nT1=√3 TPWM |u*|/Vdc · sin(π/3−θq)\nT2=√3 TPWM |u*|/Vdc · sinθq；T0=TPWM−T1−T2\n每周期两次比较边沿：(1−dj)TPWM/2、(1+dj)TPWM/2。',
+    'motorlab/inverter.py · SVPWM.set_command(), segments()',
+    [N('ab','αβ 电压指令','source',15,80,'u_alpha_command'),
+     N('abc','逆 Clarke','transform',235,80,w=170),
+     N('zero','min/max → 零序','model',470,80,'zero_sequence',w=200),
+     N('duty','+u0 → ÷Vdc → +½','model',750,80,'duty_a',w=230),
+     N('carrier','中心对齐三角载波','source',470,300,'carrier',w=200),
+     N('compare','≥ 比较','operator',750,300,'gate_au',w=180),
+     N('sector','扇区 / 作用时间','model',15,300,'pwm_sector',w=180),
+     N('bridge','三相桥','model',750,460,child='bridge',w=180)],
+    [E('ab','abc'),E('abc','zero'),E('zero','duty'),E('abc','duty','相指令'),
+     E('duty','compare','A 占空比','duty_a'),E('carrier','compare','c(t)'),
+     E('compare','bridge','A 上桥臂','gate_au'),E('ab','sector')],height=560)
+DIAGRAMS['bridge'] = D(
+    '六开关逆变器：浮动中性点与端电压',
+    '理想开关，三相各一对互补桥臂。没有中性线，电机相电压必须减去公共中性点电位，不能直接把桥臂极点电压当作相电压。门极周期内详情见开关显微镜。',
+    'SAl=1−SAu；SBl=1−SBu；SCl=1−SCu（无死区）\nvNO=Vdc(Sa+Sb+Sc)/3\nva=Vdc Sa−vNO；vb=Vdc Sb−vNO；vc=Vdc Sc−vNO\nuα=(2/3)Vdc(Sa−Sb/2−Sc/2)\nuβ=Vdc(Sb−Sc)/√3\nva+vb+vc=0；000 与111均为零电压矢量。',
+    'motorlab/inverter.py · bridge_voltage()',
+    [N('a','A 上桥臂','source',20,40,'gate_au'),N('b','B 上桥臂','source',20,200,'gate_bu'),
+     N('c','C 上桥臂','source',20,360,'gate_cu'),N('common','求和 × Vdc/3','model',260,200,w=200),
+     N('phase','极点电压 − 中性点','model',550,200,'phase_voltage_a',w=220),
+     N('clarke','Clarke → αβ','transform',830,200,'u_alpha_switch',w=210)],
+    [E('a','common'),E('b','common'),E('c','common'),E('common','phase'),
+     E('a','phase','Sa×Vdc'),E('phase','clarke')],height=490)
+DIAGRAMS['motor_visual'] = D(
+    '三维电机：物理状态到几何显示',
+    '右侧三维视图是鼠笼异步电机的结构示意。转子、轴与风扇按积分得到的机械角旋转；定子不转。绕组亮度根据三相电流变化，青色箭头表示真实磁链方向。',
+    'θm(t)=∫ωm(t)dt\n几何旋转矩阵 = RotX(θm)\n磁链箭头角 = atan2(ψrβ,ψrα)\n三相电流由 αβ 逆变换重构。\n结构尺寸为示意，不从几何反算惯量，不输出有限元场分布。\n这些状态仅用于评价和可视化，不传给辨识器。',
+    'motorlab/core.py · Motor.rotor_angle; web/motor3d.js · MotorView',
+    [N('speed','真实机械速度','source',25,80,'speed_true'),N('angle','∫ 机械角度','integrator',280,80,'rotor_angle'),
+     N('geometry','转子 / 轴 / 风扇','model',570,80,w=240),N('flux','真实磁链 αβ（α探针）','source',25,300,'flux_alpha_true'),
+     N('arrow','磁链方向箭头','model',280,300,w=180)],
+    [E('speed','angle'),E('angle','geometry'),E('flux','arrow')],height=440)
+DIAGRAMS['system']['nodes'] += [N('visual','三维物理示意','model',760,490,'rotor_angle','motor_visual',w=190)]
+DIAGRAMS['system']['edges'] += [E('motor','visual','内部状态，仅显示','rotor_angle')]
+for _node in DIAGRAMS['system']['nodes']:
+    if _node['id']=='drive': _node['label']='SVPWM / 六开关桥'
+DIAGRAMS['system']['description'] = '从 FOC 到 SVPWM、三相开关电压、机械响应和在线电阻辨识的完整运行链路。右侧三维视图由实际仿真状态驱动；高频显微镜显示控制采样之间的开关过程。'
+DIAGRAMS['system']['formula'] += '\n驱动：SVPWM → 六开关桥 → 分段脉冲电压 → 电机\n可切换平均模型作对照；三维视图为集总参数模型的几何映射。'
+DIAGRAMS['timing']['description'] = '控制与传感器采样周期 Ts 为 PWM 周期的整数倍。每个开关事件精确分割，再按积分步长上限细分求解。图形刷新不改变物理步长。'
+DIAGRAMS['timing']['formula'] = 'TPWM=1/fPWM；Ts=N·TPWM（N为正整数）\nFOC 指令在每个 Ts 内保持，PWM 每个 TPWM 重复\n每次积分不得跨过门极边沿；h≤min(hmax,Ts/最少子步数)\n传感器每 Ts 采样电流/速度，以及区间平均端电压\n高频记录保留边沿与每个物理子步；控制 CSV 只保留 Ts 采样。'
+DIAGRAMS['sensors']['description'] += ' 开关模式中电压通道测量区间平均端电压，电流与转速在区间末采样；这相当于电压积分测量前端，不是瞬时取一个开关电压作为周期电压。'
+DIAGRAMS['ekf']['description'] += ' EKF 使用测量区间平均电压，保留平均模型近似；高频纹波不应被解释成电阻真值，低 PWM 频率等工况需要额外验证。'
