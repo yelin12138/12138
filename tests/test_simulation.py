@@ -86,8 +86,7 @@ class SimulationTests(unittest.TestCase):
         self.assertLess(adaptive.metrics()['tail_flux_angle_rms_deg'], 1.)
 
     def test_plant_substep_convergence_at_fixed_sampling(self):
-        common = dict(duration=1.2, current_noise=0., voltage_noise=0., speed_noise=0.,
-                      inverter_model='average', integration_max_step=.001)
+        common = dict(duration=1.2, current_noise=0., voltage_noise=0., speed_noise=0.)
         simulations = [Simulation({**common, 'plant_substeps': count}) for count in (1, 2, 4)]
         for sim in simulations:
             sim.step(sim.total_steps)

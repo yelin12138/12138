@@ -77,27 +77,6 @@ class AppTests(unittest.TestCase):
         state = json.loads(self.request("/api/state"))
         self.assertEqual(state["snapshot"]["time"], 0)
 
-    def test_switching_window_and_lossless_csv(self):
-        self.request('/api/step', {'count': 3})
-        trace=json.loads(self.request('/api/pwm-trace?start=0&end=0.0015'))
-        self.assertTrue(trace['switching'])
-        self.assertGreater(len(trace['rows']), 20)
-        self.assertEqual(len(trace['rows']), trace['total_rows'])
-        self.assertAlmostEqual(trace['rows'][-1][0], .0015)
-        exported=list(csv.DictReader(io.StringIO(self.request('/api/export-pwm').decode('utf-8-sig'))))
-        self.assertEqual(len(exported), trace['total_rows'])
-        self.assertAlmostEqual(float(exported[-1]['time']), .0015)
-        self.assertEqual(int(float(exported[-1]['gate_au']))+int(float(exported[-1]['gate_al'])), 1)
-
-    def test_parameter_update_and_average_mode(self):
-        state=json.loads(self.request('/api/reset', {'motor_rs':2.,'motor_poles':3,'inverter_model':'average'}))
-        self.assertEqual(state['motor_parameters']['rs'],2.)
-        self.assertEqual(state['motor_parameters']['poles'],3)
-        self.request('/api/step', {'count':3})
-        trace=json.loads(self.request('/api/pwm-trace'))
-        self.assertFalse(trace['switching'])
-        self.assertEqual(trace['rows'],[])
-
 
 if __name__ == "__main__":
     unittest.main()

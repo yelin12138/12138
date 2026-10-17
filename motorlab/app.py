@@ -4,17 +4,15 @@ import csv
 from dataclasses import asdict
 import io
 import json
-import math
 import mimetypes
 import threading
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse
 
 from .diagrams import DIAGRAMS, SIGNALS
 from .simulation import DEFAULT_CONFIG, Simulation
-from .inverter import WAVE_KEYS
 
 WEB = Path(__file__).with_name("web")
 
@@ -31,8 +29,7 @@ class WorkbenchServer(ThreadingHTTPServer):
         sim = self.simulation
         return {"snapshot": sim.snapshot(), "metrics": sim.metrics(),
                 "done": sim.done, "config": sim.config,
-                "motor_parameters": asdict(sim.parameters),
-                "switching_rows": len(sim.switching)}
+                "motor_parameters": asdict(sim.parameters)}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -68,41 +65,6 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/history":
                 self.send(200, {"samples": self.server.simulation.history, **self.server.state()})
                 return
-            if path == "/api/pwm-trace":
-                try:
-                    query = parse_qs(urlparse(self.path).query)
-                    end = float(query.get('end', [self.server.simulation.snapshot()['time']])[0])
-                    start = float(query.get('start', [max(0., end-.002)])[0])
-                    if not math.isfinite(start+end) or start < 0 or end < start:
-                        raise ValueError('高频窗口的起止时间无效')
-                    sim = self.server.simulation
-                    self.send(200, {'keys': WAVE_KEYS, 'rows': sim.switching.window(start, end),
-                                    'start': start, 'end': end, 'total_rows': len(sim.switching),
-                                    'switching': sim.config['inverter_model'] == 'svpwm'})
-                except (ValueError, TypeError) as exc:
-                    self.send(400, {'error': str(exc)})
-                return
-            if path == "/api/export-pwm":
-                self.send_response(200)
-                self.send_header('Content-Type', 'text/csv; charset=utf-8')
-                self.send_header('Content-Disposition', 'attachment; filename="motorlab-switching.csv"')
-                self.send_header('Connection', 'close')
-                self.end_headers()
-                buffer = io.StringIO(newline='')
-                writer = csv.writer(buffer)
-                writer.writerow(WAVE_KEYS)
-                try:
-                    self.wfile.write(b'\xef\xbb\xbf')
-                    for i, row in enumerate(self.server.simulation.switching.rows()):
-                        writer.writerow(row)
-                        if i%1000 == 999:
-                            self.wfile.write(buffer.getvalue().encode('utf-8'))
-                            buffer.seek(0); buffer.truncate(0)
-                    self.wfile.write(buffer.getvalue().encode('utf-8'))
-                except (BrokenPipeError, ConnectionResetError):
-                    pass
-                self.close_connection = True
-                return
             if path == "/api/export":
                 rows = self.server.simulation.history
                 buffer = io.StringIO(newline="")
@@ -115,8 +77,7 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/export.json":
                 self.send(200, self.server.state(), filename="motorlab-experiment.json")
                 return
-        assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js",
-                  "/style.css": "style.css", "/motor3d.js": "motor3d.js", "/pwm-scope.js": "pwm-scope.js"}
+        assets = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/style.css": "style.css"}
         if path in assets:
             asset = WEB / assets[path]
             if asset.is_file():
