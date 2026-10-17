@@ -38,7 +38,7 @@ def compare(config=None, output="outputs/comparison"):
         ax.grid(alpha=.25)
         ax.legend(loc="upper right")
     axes[-1].set_xlabel("Simulation time / s")
-    fig.suptitle("Identical configuration and noise seed; ideal averaged inverter")
+    fig.suptitle("Identical configuration and noise seed; " + ("SVPWM six-switch bridge" if sim.config["inverter_model"] == "svpwm" else "averaged inverter"))
     fig.tight_layout()
     fig.savefig(folder / "comparison.png", dpi=140)
     plt.close(fig)

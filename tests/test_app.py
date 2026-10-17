@@ -4,10 +4,14 @@ import io
 import json
 import threading
 import unittest
+from unittest.mock import patch
+from pathlib import Path
+import socket
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from motorlab.app import WorkbenchServer
+from motorlab.app import WorkbenchServer, create_server
+from motorlab.version import VERSION
 
 
 class AppTests(unittest.TestCase):
@@ -76,6 +80,57 @@ class AppTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 400)
         state = json.loads(self.request("/api/state"))
         self.assertEqual(state["snapshot"]["time"], 0)
+
+    def test_switching_window_and_lossless_csv(self):
+        self.request('/api/step', {'count': 3})
+        trace=json.loads(self.request('/api/pwm-trace?start=0&end=0.0015'))
+        self.assertTrue(trace['switching'])
+        self.assertGreater(len(trace['rows']), 20)
+        self.assertEqual(len(trace['rows']), trace['total_rows'])
+        self.assertAlmostEqual(trace['rows'][-1][0], .0015)
+        exported=list(csv.DictReader(io.StringIO(self.request('/api/export-pwm').decode('utf-8-sig'))))
+        self.assertEqual(len(exported), trace['total_rows'])
+        self.assertAlmostEqual(float(exported[-1]['time']), .0015)
+        self.assertEqual(int(float(exported[-1]['gate_au']))+int(float(exported[-1]['gate_al'])), 1)
+
+    def test_parameter_update_and_average_mode(self):
+        state=json.loads(self.request('/api/reset', {'motor_rs':2.,'motor_poles':3,'inverter_model':'average'}))
+        self.assertEqual(state['motor_parameters']['rs'],2.)
+        self.assertEqual(state['motor_parameters']['poles'],3)
+        self.request('/api/step', {'count':3})
+        trace=json.loads(self.request('/api/pwm-trace'))
+        self.assertFalse(trace['switching'])
+        self.assertEqual(trace['rows'],[])
+
+    def test_version_identifies_the_loaded_source_and_assets(self):
+        version = json.loads(self.request('/api/version'))
+        self.assertEqual(version['version'], VERSION)
+        self.assertEqual(Path(version['source_directory']), Path(__file__).resolve().parents[1])
+        self.assertEqual(len(version['build_id']), 12)
+        self.assertEqual(json.loads(self.request('/api/config'))['app'], version)
+        page = self.request('/').decode()
+        self.assertIn(f'data-version="{VERSION}"', page)
+        self.assertIn('id="motorForm"', page)
+        # A live server serves the page paired with its already-loaded engine.
+        with patch.object(Path, 'read_bytes', side_effect=AssertionError('live disk read')):
+            self.assertIn(b'class MotorView', self.request('/motor3d.js?v='+VERSION))
+
+    def test_occupied_default_port_starts_a_distinct_server(self):
+        # Reproduce an older session occupying the preferred address.
+        with socket.socket() as old:
+            old.bind(('127.0.0.1', 0))
+            old.listen()
+            occupied = old.getsockname()[1]
+            with patch('motorlab.app.DEFAULT_PORT', occupied):
+                fresh = create_server()
+                try:
+                    self.assertNotEqual(fresh.server_port, occupied)
+                    self.assertEqual(fresh.build['version'], VERSION)
+                    # Explicitly requested ports must not silently change.
+                    with self.assertRaises(OSError):
+                        create_server(occupied)
+                finally:
+                    fresh.server_close()
 
 
 if __name__ == "__main__":

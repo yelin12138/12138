@@ -1,0 +1,26 @@
+MotorLab v0.4.0 — SVPWM 六开关、动态 3D 电机、可编辑参数
+
+请先完整解压到新文件夹，不要只在压缩包内预览或运行。
+
+Windows：双击本目录的 start_windows.bat。
+首次启动会创建本目录的 Python 环境、安装依赖并打开浏览器；请等待安装完成。
+需要已安装 Python 3.10 以上，首次安装依赖需要联网。请保留启动窗口。
+
+所有系统也可在本目录打开终端，依次运行：
+  python -m pip install -r requirements.txt
+  python run_workbench.py --open
+
+Linux / macOS 也可：bash start_workbench.sh
+
+新版辨认方法：
+  1. 顶部显示“v0.4.0 · 已连接”。
+  2. 首屏有大幅 3D 异步电机和“电机基本参数”面板。
+  3. 顶部可改采样 Ts、PWM 频率、积分步长上限。
+  4. 运行后，点击“查看载波与门极波形”可看到实际 SVPWM 脉冲。
+
+更新后请使用本次启动自动打开的网页。旧服务占用端口时，新版会换空闲端口。
+旧书签、旧网页标签、旧文件夹里的启动文件，仍可能指向旧版本。
+直接打开 index.html 无法启动 Python 仿真；report.html 是旧的离线报告。
+
+检查实际版本和目录：python run_workbench.py --check
+页面底部“版本与运行位置”也会显示本次 Python 引擎的源码位置和构建编号。

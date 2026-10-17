@@ -3,6 +3,7 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const NS = "http://www.w3.org/2000/svg";
+  let motorView = null, pwmScope = null;
   const palette = ["#3478e5", "#16a394", "#db9040", "#9170c4", "#d96980", "#559ab5", "#818b45", "#ba6d47"];
   const state = {
     config: {}, defaults: {}, signals: {}, diagrams: {}, snapshot: {}, metrics: {}, motorParameters: {},
@@ -43,10 +44,15 @@
     $("runButton").disabled = state.resetting || (state.busy && !state.running) || !Object.keys(state.signals).length || state.done;
     $("runButton").innerHTML = state.running ? '<span aria-hidden="true">Ⅱ</span> 暂停' : '<span aria-hidden="true">▶</span> 运行';
     $("runButton").classList.toggle("paused", state.running);
+    $("overviewRun").disabled = $("runButton").disabled;
+    $("overviewRun").textContent = state.running ? "Ⅱ 暂停实验" : state.done ? "实验已完成" : "▶ 运行实验";
+    $("overviewRun").classList.toggle("paused", state.running);
     $("stepButton").disabled = state.running || state.busy || state.resetting || state.done || !Object.keys(state.signals).length;
     $("batchButton").disabled = $("stepButton").disabled;
     $("resetButton").disabled = !Object.keys(state.signals).length || state.resetting;
     $("settingsForm").querySelector('button[type="submit"]').disabled = state.resetting;
+    $("motorForm").querySelector('button[type="submit"]').disabled = state.resetting || !Object.keys(state.signals).length;
+    $("timingForm").querySelector('button[type="submit"]').disabled = state.resetting || !Object.keys(state.signals).length;
     $("statusLed").classList.toggle("running", state.running);
     $("statusText").textContent = state.resetting ? "正在重置" : state.running ? "仿真运行中" : state.busy ? "完成当前采样批次…" : state.done ? "实验完成" : "已暂停 · 可单步";
     $("scopeStatus").textContent = state.done ? "实验完成" : state.running ? "正在采样" : state.history.length > 1 ? "已暂停" : "等待采样";
@@ -413,13 +419,14 @@
     elapsed: ["仿真时长", "s"], time: ["仿真时长", "s"], wall_time: ["计算耗时", "s"], convergence_time: ["收敛时间", "s"],
     tail_relative_mae_percent: ["末 0.4 s 电阻平均误差", "%"], tail_aligned_relative_mae_percent: ["时间对齐后的末段误差", "%"],
     full_rmse_ohm: ["全程电阻 RMSE", "Ω"], tail_speed_rmse_rpm: ["末段转速 RMSE", "rpm"],
-    tail_flux_angle_rms_deg: ["末段磁链偏角 RMS", "°"], peak_current_a: ["全程电流峰值", "A"],
+    tail_flux_angle_rms_deg: ["末段磁链偏角 RMS", "°"], peak_current_a: ["控制采样电流峰值", "A"],
     voltage_saturation_percent: ["电压限幅占比", "%"], final_rr_est: ["当前估计电阻", "Ω"], final_rr_true: ["当前真实电阻", "Ω"],
+    peak_instant_current_a: ["高频电流矢量峰值", "A"],
     duration: ["已仿真时间", "s"], tail_window_seconds: ["末段评价窗口", "s"],
   };
   function renderMetrics() {
     const container = $("metrics"); container.replaceChildren();
-    const preferred = ["tail_relative_mae_percent", "tail_aligned_relative_mae_percent", "full_rmse_ohm", "tail_speed_rmse_rpm", "tail_flux_angle_rms_deg", "peak_current_a", "voltage_saturation_percent", "samples"];
+    const preferred = ["tail_relative_mae_percent", "tail_aligned_relative_mae_percent", "full_rmse_ohm", "tail_speed_rmse_rpm", "tail_flux_angle_rms_deg", "peak_current_a", "peak_instant_current_a", "voltage_saturation_percent", "samples"];
     const entries = preferred.some((key) => key in state.metrics && key !== "samples") ? preferred.filter((key) => key in state.metrics).map((key) => [key, state.metrics[key]]) : Object.entries(state.metrics);
     for (const [key, raw] of entries) {
       if (["notes", "note", "description", "mode"].includes(key)) continue;
@@ -440,11 +447,21 @@
 
   const fields = [
     ["duration", "仿真总时长 / s", .01, 30, .1, "总时长使用仿真时间。"],
-    ["sample_time", "采样周期 Ts / s", .0001, .001, .0001, "控制器与辨识器按此周期更新。"],
-    ["plant_substeps", "每次采样的物理积分步数", 1, 20, 1, "积分 Δt = Ts / 积分步数。"],
+    ["sample_time", "采样周期 Ts / s", .00005, .002, .0001, "同步 SVPWM 中须为 PWM 周期的整数倍；顶部也可修改。"],
+    ["inverter_model", "逆变器模型"],
+    ["pwm_frequency", "PWM 频率 / Hz", 1000, 20000, 500, "PWM 周期 TPWM=1/fPWM。顶部也可修改。", "SVPWM 与积分"],
+    ["integration_max_step", "积分步长上限 / s", .0000005, .001, .000005, "每个开关边沿额外分割，实际子步可更短。", "SVPWM 与积分"],
+    ["plant_substeps", "每次采样最少积分步数", 1, 20, 1, "积分上限同时受 Ts/N 限制，开关事件不会被跨过。", "SVPWM 与积分"],
+    ["motor_rs", "定子电阻 Rs / Ω", .05, 20, .05, "对象与控制器共享已知参数；未知转子电阻单独设置。", "电机基本参数"],
+    ["motor_lm", "励磁电感 Lm / H", .001, 1, .001, "须满足 Ls − Lm²/Lr > 0。", "电机基本参数"],
+    ["motor_ls", "定子总自感 Ls / H", .001, 2, .001, "不是定子漏感；包含励磁部分。", "电机基本参数"],
+    ["motor_lr", "转子总自感 Lr / H", .001, 2, .001, "转子参数折算到定子侧。", "电机基本参数"],
+    ["motor_poles", "极对数 p", 1, 8, 1, "磁极数为 2p；会改变机械/电角速度关系及示意绕组。", "电机基本参数"],
+    ["motor_inertia", "等效转动惯量 J / kg·m²", .001, 5, .001, "包含折算到轴上的负载惯量。", "电机基本参数"],
+    ["motor_friction", "黏性摩擦 B / N·m·s·rad⁻¹", 0, 2, .001, "几何为示意，不从外形自动反算惯量。", "电机基本参数"],
     ["target_rpm", "目标转速 / rpm", 0, 1500, 50, "速度外环的给定值。"],
     ["mode", "控制器电阻参数来源"],
-    ["rr_final", "变化后转子电阻 / Ω", .2, 2.5, .05, "只配置被测电机；辨识器不读取此值。"],
+    ["rr_final", "变化后转子电阻 / Ω", .2, 2.5, .05, "只配置被测电机；辨识器不读取此值。", "电机基本参数"],
     ["load_final", "变化后负载转矩 / N·m", 0, 15, .5, "用于测试负载扰动。"],
     ["noise", "测量噪声幅度", 0, 1, .001, "按引擎定义应用于采样链路。"],
     ["current_noise", "电流噪声标准差 / A", 0, 2, .01, "独立高斯噪声。", "采样与传感器"],
@@ -464,7 +481,7 @@
     ["dc_bus_voltage", "直流母线电压 / V", 100, 800, 10, "", "FOC 与反馈环"],
     ["magnetization_time", "预励磁时间 / s", .15, 5, .05, "", "FOC 与反馈环"],
     ["speed_ramp_time", "转速指令爬升时间 / s", .1, 10, .1, "", "FOC 与反馈环"],
-    ["rr_initial", "被测电机初始电阻 / Ω", .2, 2.5, .05, "", "工况与辨识初值"],
+    ["rr_initial", "被测电机初始电阻 / Ω", .2, 2.5, .05, "与辨识器初值、控制器标称值分别配置。", "电机基本参数"],
     ["initial_estimate", "辨识器初始估计 / Ω", .1, 3, .05, "可故意偏离真实电阻以观察收敛。", "工况与辨识初值"],
     ["nominal_rr", "控制器标称电阻 / Ω", .2, 2.5, .05, "固定参数模式使用此值。", "工况与辨识初值"],
     ["ramp_start", "电阻开始变化 / s", 0, 30, .1, "", "工况与辨识初值"],
@@ -476,6 +493,8 @@
     ["seed", "测量噪声随机种子", 0, 4294967295, 1, "相同配置与种子便于重复比较。", "工况与辨识初值"],
   ];
   function renderSettings() {
+    renderTimingSettings();
+    renderMotorSettings();
     const container = $("configFields"); container.replaceChildren();
     const sections = new Map();
     for (const [key, name, min, max, step, hint, section] of fields) {
@@ -484,9 +503,10 @@
       const field = document.createElement("label"); field.className = "settings-field";
       const title = document.createElement("span"); title.textContent = name; field.append(title);
       let input;
-      if (key === "mode") {
+      if (key === "mode" || key === "inverter_model") {
         input = document.createElement("select");
-        for (const [value, text] of [["fixed", "固定初始电阻"], ["adaptive", "在线辨识补偿"], ["oracle", "真实值参考（仅评价）"]]) {
+        const choices = key === "mode" ? [["fixed", "固定初始电阻"], ["adaptive", "在线辨识补偿"], ["oracle", "真实值参考（仅评价）"]] : [["svpwm", "SVPWM 六开关模型"], ["average", "平均电压模型（对照）"]];
+        for (const [value, text] of choices) {
           const option = document.createElement("option"); option.value = value; option.textContent = text; input.append(option);
         }
         input.value = current;
@@ -495,15 +515,45 @@
         for (const [value, text] of [["true", "开启"], ["false", "关闭"]]) { const option = document.createElement("option"); option.value = value; option.textContent = text; input.append(option); }
         input.value = String(current); input.dataset.boolean = "true";
       } else {
-        input = document.createElement("input"); input.type = "number"; input.value = current; input.min = min; input.max = max; input.step = ["plant_substeps", "sensor_delay_steps", "adc_bits", "seed"].includes(key) ? "1" : "any"; input.required = true;
+        input = document.createElement("input"); input.type = "number"; input.value = current; input.min = min; input.max = max; input.step = ["plant_substeps", "sensor_delay_steps", "adc_bits", "seed", "motor_poles"].includes(key) ? "1" : "any"; input.required = true;
       }
       input.name = key; field.append(input);
       if (hint) { const helper = document.createElement("small"); helper.textContent = hint; field.append(helper); }
       if (section) {
-        if (!sections.has(section)) { const details = document.createElement("details"); details.className = "config-section"; const summary = document.createElement("summary"); summary.textContent = section; details.append(summary); container.append(details); sections.set(section, details); }
+        if (!sections.has(section)) { const details = document.createElement("details"); details.className = "config-section"+(section==="电机基本参数"?" motor-parameters":""); const summary = document.createElement("summary"); summary.textContent = section; details.append(summary); container.append(details); sections.set(section, details); }
         sections.get(section).append(field);
       } else container.append(field);
     }
+  }
+  function renderMotorSettings() {
+    const container = $("motorQuickFields");
+    container.replaceChildren();
+    const quickFields = [
+      ["motor_rs", "定子电阻 Rs / Ω"], ["rr_initial", "转子初始 Rr / Ω"], ["rr_final", "转子终值 Rr / Ω"],
+      ["motor_lm", "励磁电感 Lm / H"], ["motor_ls", "定子总自感 Ls / H"], ["motor_lr", "转子总自感 Lr / H"],
+      ["motor_poles", "极对数 p"], ["motor_inertia", "惯量 J / kg·m²"], ["motor_friction", "摩擦 B / N·m·s/rad"],
+    ];
+    for (const [key, title] of quickFields) {
+      const definition = fields.find(field => field[0] === key);
+      const field = document.createElement("label"), text = document.createElement("span"), input = document.createElement("input");
+      text.textContent = title;
+      input.type = "number"; input.id = `motorInput_${key}`; input.dataset.key = key;
+      input.min = definition[2]; input.max = definition[3]; input.step = key === "motor_poles" ? "1" : "any";
+      input.required = true; input.value = state.config[key]; input.title = definition[5] || title;
+      field.append(text, input); container.append(field);
+    }
+    $("quickMode").value = state.config.mode;
+    const c = state.config, leakage = c.motor_ls - c.motor_lm*c.motor_lm/c.motor_lr;
+    $("motorDerived").textContent = `已应用：${2*c.motor_poles} 极 · 等效漏感 Lσ=${format(leakage*1000,2)} mH · 初始转子时间常数 Tr=${format(c.motor_lr/c.rr_initial*1000,1)} ms`;
+  }
+  function renderTimingSettings() {
+    const c = state.config;
+    $("quickInverter").value = c.inverter_model || "svpwm";
+    $("quickDuration").value = c.duration;
+    $("quickSample").value = Number((c.sample_time*1e6).toFixed(5));
+    $("quickPwm").value = c.pwm_frequency/1000;
+    $("quickIntegration").value = Number((c.integration_max_step*1e6).toFixed(5));
+    $("timingRelation").textContent = c.inverter_model === "svpwm" ? `TPWM=${format(1e6/c.pwm_frequency,1)} μs · 每次控制采样 ${Math.round(c.sample_time*c.pwm_frequency)} 个 PWM 周期 · 边沿自动分段` : "平均模型用于对照，不产生开关脉冲";
   }
   function switchTab(settings) {
     $("modelTab").classList.toggle("active", !settings); $("settingsTab").classList.toggle("active", settings);
@@ -625,10 +675,20 @@
     $("tsValue").textContent = niceTime(ts);
     $("dtValue").textContent = niceTime(Number(snapshot.integration_step || ts / (config.plant_substeps || 1)));
     $("durationValue").textContent = `${format(Number(config.duration || 0), 2)} s`;
+    const shown = selectedSample();
+    $("sceneTime").textContent = `${state.live ? "当前" : "历史"} t = ${format(Number(shown.time || 0), 4)} s`;
+    for (const [id, key, suffix, digits] of [["motorRpm", "speed_true_rpm", "rpm", 1], ["motorTorque", "torque", "N·m", 2], ["motorResistance", "rr_est", "Ω", 4], ["motorError", "rr_error_pct", "%", 2]]) {
+      const value = document.createTextNode(`${format(shown[key], digits)} `), units = document.createElement("small");
+      units.textContent = suffix; $(id).replaceChildren(value, units);
+    }
+    $("driveBadge").textContent = config.inverter_model === "svpwm" ? `SVPWM · ${format(config.pwm_frequency/1000, 1)} kHz` : "平均电压 · 对照模式";
     renderProbe(); updateDiagramValues(); renderModuleValues(); renderMetrics(); drawScope();
+    if (motorView) { motorView.setParameters(state.motorParameters); motorView.setSample(selectedSample(), state.live && state.running); }
+    if (pwmScope) pwmScope.setState(selectedSample(), state.config);
   }
 
   $("runButton").addEventListener("click", () => state.running ? pause() : start());
+  $("overviewRun").addEventListener("click", () => state.running ? pause() : start());
   $("stepButton").addEventListener("click", () => advance(1));
   $("batchButton").addEventListener("click", () => advance(100));
   $("resetButton").addEventListener("click", () => reset({ ...state.config }));
@@ -638,9 +698,32 @@
   $("signalSearch").addEventListener("input", renderSignals);
   $("settingsForm").addEventListener("submit", (event) => {
     event.preventDefault(); const config = { ...state.config };
-    for (const input of $("settingsForm").querySelectorAll("input[name],select[name]")) config[input.name] = input.dataset.boolean ? input.value === "true" : input.name === "mode" ? input.value : Number(input.value);
+    for (const input of $("settingsForm").querySelectorAll("input[name],select[name]")) config[input.name] = input.dataset.boolean ? input.value === "true" : ["mode", "inverter_model"].includes(input.name) ? input.value : Number(input.value);
     reset(config);
   });
+  $("timingForm").addEventListener("submit", event => {
+    event.preventDefault();
+    reset({...state.config, inverter_model:$("quickInverter").value,
+      duration:Number($("quickDuration").value), sample_time:Number($("quickSample").value)*1e-6,
+      pwm_frequency:Number($("quickPwm").value)*1000, integration_max_step:Number($("quickIntegration").value)*1e-6});
+  });
+  $("motorForm").addEventListener("submit", event => {
+    event.preventDefault();
+    const config = {...state.config, mode: $("quickMode").value};
+    for (const input of $("motorQuickFields").querySelectorAll("input[data-key]")) config[input.dataset.key] = Number(input.value);
+    reset(config);
+  });
+  document.querySelectorAll(".experiment-links [data-diagram]").forEach(button => button.addEventListener("click", () => {
+    const id = button.dataset.diagram;
+    navigate(id, ["system", id]);
+    $("modelWorkspace").scrollIntoView({behavior: "smooth", block: "start"});
+  }));
+  $("expandMotor").addEventListener("click", () => { $("largeMotorHost").append($("motorCanvas")); $("motorDialog").showModal(); if (motorView) motorView.dirty=true; });
+  $("motorParameterButton").addEventListener("click", () => { switchTab(true); const section=document.querySelector("details.motor-parameters"); if(section){section.open=true; section.scrollIntoView({behavior:"smooth",block:"start"});} });
+  $("closeMotor").addEventListener("click", () => $("motorDialog").close());
+  $("motorDialog").addEventListener("close", () => { $("motorHost").prepend($("motorCanvas")); if (motorView) motorView.dirty=true; });
+  $("motorCutaway").addEventListener("change", () => { if (motorView) { motorView.cutaway=$("motorCutaway").checked; motorView.build(); } });
+  $("motorField").addEventListener("change", () => { if (motorView) { motorView.field=$("motorField").checked; motorView.dirty=true; } });
   $("zoomIn").addEventListener("click", () => zoom(1.25));
   $("zoomOut").addEventListener("click", () => zoom(.8));
   $("fitDiagram").addEventListener("click", () => { state.zoom = 1; state.viewBox = null; applyViewBox(); });
@@ -678,7 +761,19 @@
 
   async function init() {
     try {
+      if (location.protocol === "file:") throw new Error("请通过 Python 启动工作台，直接打开 HTML 无法运行仿真。");
+      motorView = new window.MotorView($("motorCanvas"), $("motorStatus"));
+      pwmScope = new window.PWMScope($("pwmCanvas"), $("pwmWindow"), $("pwmStatus"), $("pwmProbe"));
       const data = await api("/api/config");
+      const expectedBuild = new URLSearchParams(location.search).get("build");
+      if (data.app?.version !== document.body.dataset.version || (expectedBuild && expectedBuild !== data.app?.build_id)) {
+        throw new Error("页面与 Python 引擎版本不一致。请运行新解压目录中的 run_workbench.py --open，并使用它新打开的地址。");
+      }
+      $("versionBadge").textContent = `v${data.app.version} · 已连接`;
+      $("versionBadge").title = `构建 ${data.app.build_id}`;
+      $("buildSummary").textContent = `MotorLab v${data.app.version} · 构建 ${data.app.build_id} · 查看运行位置`;
+      $("buildSource").textContent = `本次 Python 引擎来自：${data.app.source_directory}`;
+      document.body.dataset.build = data.app.build_id;
       state.defaults = data.defaults || {}; state.config = { ...state.defaults, ...(data.config || {}) };
       state.signals = data.signals || {}; state.diagrams = data.diagrams || {};
       state.selected = new Set(["speed_rpm", "speed_ref_rpm", "rr_est", "rr_true", "iq"].filter((key) => state.signals[key]));

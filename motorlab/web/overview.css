@@ -1,0 +1,52 @@
+/* Main experiment view: the motor and its actual parameters are visible on entry. */
+.version-badge{background:#174e52;border:1px solid #397e7d;border-radius:5px;padding:7px 10px;color:#a9f0d7;white-space:nowrap;font:12px Consolas,monospace;letter-spacing:.2px}
+.offline-notice{padding:22px;background:#fff0db;border:2px solid #df993e;font-size:18px;line-height:1.8;color:#714206}
+.experiment-deck{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(430px,1fr);gap:16px;max-width:2200px;margin:0 auto;padding:18px 18px 12px;align-items:stretch}
+.experiment-deck .motor-scene{margin:0;max-width:none;min-width:0;background:#fff;border-color:#dbe5ed;display:flex;flex-direction:column}
+.experiment-deck .scene-heading{padding:17px 19px;min-height:73px;gap:14px;flex-wrap:wrap}
+.experiment-deck .scene-heading h2{font-size:18px;letter-spacing:.4px;margin:6px 0 0;font-weight:600}
+.experiment-deck .scene-heading>div:last-child{display:flex;gap:10px;align-items:center}
+.drive-badge{font-size:11px;font-weight:500;background:#e9f5ef;color:#257664;padding:6px 9px;border-radius:4px;white-space:nowrap}
+.experiment-deck .motor-stage{height:310px;flex:none;min-height:0}
+.scene-tag{top:16px;left:18px;font-size:11px}
+.scene-time{position:absolute;bottom:14px;right:18px;font:12px Consolas,monospace;color:#a9c9dc;pointer-events:none}
+.motor-readouts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border-bottom:1px solid #e2eaf0}
+.motor-readouts>div{padding:14px 17px;min-width:0}
+.motor-readouts>div+div{border-left:1px solid #e2eaf0}
+.motor-readouts span{color:#8094a7;display:block;font-size:10px;margin-bottom:8px}
+.motor-readouts strong{font-size:24px;font-weight:500;color:#335b78;font-variant-numeric:tabular-nums;white-space:nowrap}
+.motor-readouts small{font-size:11px;color:#7c92a6;font-weight:400}
+.scene-bottom{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:11px 17px 0}
+.scene-bottom .scene-controls{padding:0;font-size:11px}
+.scene-bottom .scene-status{margin:0;font-size:10px}
+.experiment-deck .scene-note{margin:9px 17px 13px;line-height:1.7}
+.motor-setup{min-width:0}
+.motor-setup .scene-heading{border-bottom:1px solid #e7edf3}
+.setup-intro{font-size:11px;color:#8094a6;line-height:1.8;margin:13px 19px 9px}
+#motorForm{padding:0 19px 17px}
+.motor-parameter-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px 14px}
+.motor-parameter-grid label{min-width:0;color:#657e92;font-size:11px}
+.motor-parameter-grid label span{display:block;min-height:22px;line-height:1.6}
+.motor-parameter-grid input{width:100%;min-width:0;background:#f8fafc;border:1px solid #dce5ee;border-radius:5px;padding:9px 10px;color:#2b4b66;font-variant-numeric:tabular-nums;font-size:13px}
+.motor-parameter-grid input:focus{background:white;outline:2px solid #a7c9e3;outline-offset:1px}
+.mode-select{display:flex;gap:14px;align-items:center;font-size:11px;color:#657e92;margin-top:16px}
+.mode-select select{flex:1;padding:8px 10px}
+.parameter-derived{color:#54837f;background:#f1f8f6;border:1px solid #e1efea;border-radius:4px;padding:10px 11px;line-height:1.8;font-size:11px;margin:12px 0}
+.motor-form-actions{display:flex;gap:10px;flex-wrap:wrap}
+.motor-form-actions button{flex:1}
+.experiment-links{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:2200px;margin:0 auto;padding:6px 20px 2px;font-size:11px;color:#8a9dad}
+.experiment-links>span:first-child{font-size:10px;letter-spacing:.5px;color:#647e95;margin-right:2px}
+.experiment-links button{background:#fff;border:1px solid #d9e4ed;color:#486b89;border-radius:5px;padding:8px 11px;font-size:11px}
+.experiment-links button:hover{color:#176c8c;border-color:#6aa9be;background:#f6fbfc}
+.experiment-links a{margin-left:auto;color:#278a8a;text-decoration:none;padding:8px 0}
+.build-details{max-width:2160px;margin:5px 20px 18px;color:#6d869a;font-size:11px;overflow-wrap:anywhere}
+.build-details summary{cursor:pointer;padding:10px 0}
+.build-details p{line-height:1.7;margin:4px 0}
+.workspace>.center-panel{width:100%;max-width:100%;min-width:0}
+.canvas-toolbar{min-width:0;max-width:100%}
+#breadcrumbs{flex:1;width:0}
+.canvas-actions{flex-shrink:0}
+@media(min-width:1600px){.experiment-deck .motor-stage{min-height:330px}.experiment-deck{grid-template-columns:minmax(0,1.3fr) minmax(530px,1fr)}.motor-parameter-grid{gap:17px 18px}.setup-intro{margin-top:17px;margin-bottom:15px}}
+@media(max-width:1100px){.topbar{gap:12px}.local-tag{display:none}.experiment-deck{grid-template-columns:minmax(0,1fr) minmax(380px,1fr);gap:12px;padding:12px}.experiment-deck .scene-heading{padding:14px}.experiment-deck .scene-heading h2{font-size:16px}.drive-badge{font-size:10px}.motor-readouts>div{padding:12px 9px}.motor-readouts strong{font-size:20px}.motor-readouts span{font-size:9px}#motorForm{padding:0 14px 15px}.setup-intro{margin:11px 14px}.motor-parameter-grid{gap:11px 10px}.motor-parameter-grid label{font-size:10px}.scene-bottom{padding-left:12px;padding-right:12px}.experiment-deck .scene-note{margin-left:12px;margin-right:12px}}
+@media(max-width:850px){.experiment-deck{grid-template-columns:minmax(0,1fr)}.experiment-deck .motor-stage{height:320px;flex:none}.experiment-deck .scene-heading{flex-wrap:nowrap}.motor-readouts strong{font-size:24px}.motor-readouts span{font-size:11px}.motor-parameter-grid{gap:14px}.motor-parameter-grid label{font-size:11px}.experiment-links{gap:7px;padding:5px 13px}.experiment-links a{margin-left:0}.version-badge{font-size:11px;padding:6px}.topbar{flex-wrap:wrap;padding-top:12px;padding-bottom:12px}.top-status{margin-left:auto}.topbar .project{display:none}}
+@media(max-width:460px){.version-badge{margin-left:auto}.top-status{flex-basis:100%;justify-content:flex-end;margin-top:-4px}.experiment-deck{padding:9px;gap:10px}.experiment-deck .scene-heading{flex-wrap:wrap;gap:10px}.experiment-deck .scene-heading h2{font-size:16px}.experiment-deck .motor-stage{height:285px;min-height:0}.motor-readouts{grid-template-columns:repeat(2,minmax(0,1fr))}.motor-readouts>div:nth-child(3){border-left:0}.motor-readouts>div:nth-child(n+3){border-top:1px solid #e2eaf0}.motor-readouts>div{padding:11px 15px}.motor-readouts strong{font-size:22px}.motor-parameter-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.experiment-links>span:first-child{flex-basis:100%}.experiment-links button{font-size:10px;padding:7px}.experiment-links>a{flex-basis:100%}.build-details{margin-left:14px;margin-right:14px}}
